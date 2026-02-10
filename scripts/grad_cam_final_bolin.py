@@ -7,42 +7,38 @@ Created on Mon Apr 22 14:51:31 2024
 """
 
 import os
-import torch
 import pickle
 
-import numpy as np
-import torch.backends.cudnn as cudnn
-
-from torch.utils.data.dataloader import DataLoader
-from sklearn.model_selection import StratifiedKFold, train_test_split
-from tqdm.auto import tqdm
-# from torchviz import make_dot
-from losses import MultiTaskLoss, MMOLoss
-from datasets import HandCraftedFeaturesDataset, RadPathDataset, custom_collate
-from models import FusionModelBi, Model
-from utils import *
-from parameters import parse_args
-import pandas as pd
-from PIL import Image
-
-
-import numpy as np
-
 import matplotlib
-#matplotlib.use('TkAgg')
-import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 
-
+#matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+import torch.backends.cudnn as cudnn
 from captum.attr import (
     IntegratedGradients,
     LayerIntegratedGradients,
     TokenReferenceBase,
     configure_interpretable_embedding_layer,
     remove_interpretable_embedding_layer,
-    visualization
+    visualization,
 )
 from captum.attr._utils.input_layer_wrapper import ModelInputWrapper
+from PIL import Image
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from torch.utils.data.dataloader import DataLoader
+from tqdm.auto import tqdm
+
+from smurf.datasets import HandCraftedFeaturesDataset, RadPathDataset, custom_collate
+
+# from torchviz import make_dot
+from smurf.losses import MMOLoss, MultiTaskLoss
+from smurf.models import FusionModelBi, Model
+from smurf.parameters import parse_args
+from smurf.utils import *
 
 #### openslide path
 
@@ -60,15 +56,10 @@ else:
 
 
 
+import matplotlib.colors as mcolors
 from scipy.ndimage import gaussian_filter
 
-import matplotlib.colors as mcolors
-
-
-
-
-
-###### arg parse here 
+###### arg parse here
 
 args = parse_args()
 root = args.dataroot
@@ -154,7 +145,7 @@ print("train_index", train_index[:10])
 # Assuming args.dataroot is a string path and data is a DataFrame
 base_path = os.path.join(args.dataroot, "pathology", "slides")
 
-### format pathology 
+### format pathology
 
 print("data type", data['format_pathology'].iloc[0])
 
@@ -204,7 +195,7 @@ slide_path = os.path.abspath(slide_path)
 #     print("Slide dimensions:", slide.dimensions)
 #     print("Level count:", slide.level_count)
 #     print("Level dimensions:", slide.level_dimensions)
-    
+
 #     # Level index for the dimension (896, 584), determine this index from the level_dimensions
 #     # For example, if this dimension is the 7th level (index starts from 0)
 #     level_index = 7  # Adjust this index based on the actual order in your slide.level_dimensions
@@ -215,7 +206,7 @@ slide_path = os.path.abspath(slide_path)
 
 #     # Convert the image to RGB (discard the alpha channel)
 #     original_image = image.convert('RGB')
-    
+
 #     print("image shape after dimensions fixed", original_image.size)
 
 #     # ####Display the image using matplotlib
@@ -252,7 +243,7 @@ first_sample_dataset, batch_size=args.batch_size, shuffle=False, collate_fn=cust
 
 
 
-####### IG define here 
+####### IG define here
 #from captum.attr import IntegratedGradients
 
 
@@ -264,7 +255,7 @@ def visualize_attributions_wsi(original_image, attributions):
     smoothing_sigma = 30 #Sigma for Gaussian smoothing
     percentile = 99    # Percentile for thresholding the attributions
     fragment_index = 0    # Assuming you want to visualize the first fragment
-    feature_index = 20    # Assuming you want to visualize the first feature 2, (192: original) 
+    feature_index = 20    # Assuming you want to visualize the first feature 2, (192: original)
 
     # Convert attributions from torch.Tensor to numpy.ndarray if necessary
     if isinstance(attributions, torch.Tensor):
@@ -301,7 +292,7 @@ def visualize_attributions_wsi(original_image, attributions):
     threshold = np.percentile(attribution_norm, percentile)
     attribution_highlighted = np.where(attribution_norm >= threshold, attribution_norm, 0)
     print("attribution_highlighted shape:", attribution_highlighted.shape)
-    
+
     colors = [(0, 1, 0, 0), (0.5, 1, 0.5, 0.5), (1, 0, 0, 1)]
     cmap = mcolors.LinearSegmentedColormap.from_list("custom_cmap", colors)
 
@@ -371,7 +362,7 @@ def visualize_attributions_with_example_style(original_image, attributions):
     # Normalize the smoothed attribution map
     attribution_norm = np.clip(attribution_smoothed, 0, np.percentile(attribution_smoothed, percentile))  # Clip outliers
     #attribution_norm = (attribution_smoothed - np.min(attribution_smoothed)) / (np.max(attribution_smoothed) - np.min(attribution_smoothed))
-    
+
     # Apply a threshold to highlight areas with the highest attributions
     #threshold = np.percentile(attribution_norm, percentile)
     #attribution_highlighted = np.where(attribution_norm >= percentile, attribution_norm, 0)
@@ -434,18 +425,18 @@ def forward_func(mod1, mod2, mod3):
     output = model(mod1, mod2, mod3, batch_size)
     pred_grade, pred_hazard = output
     print("pred_grade after ig", pred_grade.shape)
-    
+
     print("pred_grade after ig value", pred_grade)
     print("pred_hazard after ig", pred_hazard.shape)
     return pred_hazard  # Ensure we're
-    
+
 
 ig = IntegratedGradients(forward_func)
 
 for i, (mod1, mod2, mod3, grade, time, event, ID) in enumerate(train_loader):
     try:
         #mod1, mod2, mod3 = mod1.to(device), mod2.to(device), mod3.to(device)
-        
+
         #plot_data(mod1, mod2, mod3)
         mod1 = mod1.to(device)   #.requires_grad_(True)
         mod2 = mod2.to(device)   #.requires_grad_(True)
@@ -475,20 +466,20 @@ for i, (mod1, mod2, mod3, grade, time, event, ID) in enumerate(train_loader):
         original_mod1 = mod1.cpu().detach().numpy()
         original_mod2 = mod2.cpu().detach().numpy()
         original_mod3 = mod3.cpu().detach().numpy()
-        
-        
-        
+
+
+
         # Assuming attributions is a tuple containing attributions for mod1, mod2, and mod3
         attributions_mod1 = attributions[0].cpu().detach().numpy()
         attributions_mod2 = attributions[1].cpu().detach().numpy()
         attributions_mod3 = attributions[2].cpu().detach().numpy()
-        
-        
+
+
         slide = openslide.OpenSlide(slide_path)
         print("Slide dimensions:", slide.dimensions)
         print("Level count:", slide.level_count)
         print("Level dimensions:", slide.level_dimensions)
-           
+
             # Level index for the dimension (896, 584), determine this index from the level_dimensions
             # For example, if this dimension is the 7th level (index starts from 0)
         level_index = 5  # Adjust this index based on the actual order in your slide.level_dimensions
@@ -499,30 +490,30 @@ for i, (mod1, mod2, mod3, grade, time, event, ID) in enumerate(train_loader):
 
             # Convert the image to RGB (discard the alpha channel)
         original_image = image.convert('RGB')
-           
+
         print("image shape after dimensions fixed", original_image.size)
-        
+
         check_for_nan(attributions_mod3)
-        
+
         # visualize_attributions_wsi(original_image, attributions_mod3) ### wsi
         visualize_attributions_with_example_style(original_mod1, attributions_mod1)    #### lymph
         visualize_attributions_with_example_style(original_mod2, attributions_mod2)   ### tumour
-        
-        
-        
+
+
+
 #         #####Visualize attributions on the original images
 #         Assuming you have a function visualize_attributions defined for visualization
 #         visualize_attributions(original_mod1, attributions_mod1)
 #         visualize_modality_attributions(original_mod1, attributions_mod1, channel_idx=0, depth_idx=0)  # mod3 might have different dimensions
 #         visualize_attributions(original_mod2, attributions_mod2)
 #         visualize_attributions_with_example_style(original_mod2, attributions_mod2)
-        
+
     except Exception as e:
         print(f"Error during processing batch {i}: {e}")
-        
-        
-        
-        
+
+
+
+
 
 
 
@@ -547,6 +538,3 @@ for i, (mod1, mod2, mod3, grade, time, event, ID) in enumerate(train_loader):
 
 
 ###
-
-
-

@@ -1,22 +1,29 @@
 import os
-import torch
 import pickle
 
-import numpy as np
-import torch.backends.cudnn as cudnn
-
-from torch.utils.data.dataloader import DataLoader
-from sklearn.model_selection import StratifiedKFold, train_test_split
-from tqdm.auto import tqdm
-# from torchviz import make_dot
-from losses import MultiTaskLoss, MMOLoss
-from datasets import RadPathDataset, PathDataset, RadDataset, custom_collate, custom_collate_pathology
-from models import FusionModelBi, Model, RModel, PModel
-from utils import *
-from parameters import parse_args
-import scipy
 import matplotlib.pyplot as plt
-from sklearn.manifold import TSNE 
+import numpy as np
+import scipy
+import torch
+import torch.backends.cudnn as cudnn
+from sklearn.manifold import TSNE
+from sklearn.model_selection import StratifiedKFold, train_test_split
+from torch.utils.data.dataloader import DataLoader
+from tqdm.auto import tqdm
+
+from smurf.datasets import (
+    PathDataset,
+    RadDataset,
+    RadPathDataset,
+    custom_collate,
+    custom_collate_pathology,
+)
+
+# from torchviz import make_dot
+from smurf.losses import MMOLoss, MultiTaskLoss
+from smurf.models import FusionModelBi, Model, PModel, RModel
+from smurf.parameters import parse_args
+from smurf.utils import *
 
 # from torch.utils.tensorboard import SummaryWriter
 # writer = SummaryWriter()
@@ -35,7 +42,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
     all_event = []
     all_ID = []
 
-    
+
 
     if type(criterion) == list:
         mmo_criterion = criterion[-1]
@@ -52,7 +59,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
                 loss_mmo = 0
             model.to(device)
             pred = model(mod1, mod2)
-            
+
             if args.batch_size==1:
                 if args.task == "multitask":
                     pred_grade, pred_hazard = pred
@@ -73,7 +80,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
                 else:
                     raise NotImplementedError(
                         f'task method {args.task} is not implemented')
-            
+
             # print(pred_grade, grade)
             loss_task = criterion(args.task, pred_grade,
                                 pred_hazard, grade, time, event)
@@ -91,7 +98,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
             all_time.append(time)
             all_event.append(event)
             all_ID.append(ID)
-            
+
 
         all_grade = torch.concat(all_grade)
         all_time = torch.concat(all_time)
@@ -109,13 +116,13 @@ def one_epoch(args, split, model, optim, loader, criterion):
             mod3 = torch.reshape(mod3, (mod3.shape[0]*mod3.shape[1], mod3.shape[2], mod3.shape[3], mod3.shape[4])).to(device)
 
             batch = grade.shape[0]
-            
+
             loss_mmo = 0
-            
+
             # print(batch)
             model.to(device)
             pred = model(mod3, batch)
-            
+
             if args.batch_size==1:
                 if args.task == "multitask":
                     pred_grade, pred_hazard = pred
@@ -136,9 +143,9 @@ def one_epoch(args, split, model, optim, loader, criterion):
                 else:
                     raise NotImplementedError(
                         f'task method {args.task} is not implemented')
-            
+
             loss_task = criterion(args.task, pred_grade,pred_hazard, grade, time, event)
-            
+
             loss = loss_task + args.gamma*loss_mmo
 
             if split == 'train':
@@ -154,7 +161,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
             all_time.append(time)
             all_event.append(event)
             all_ID.append(ID)
-    
+
 
         all_grade = torch.concat(all_grade)
         all_time = torch.concat(all_time)
@@ -177,11 +184,11 @@ def one_epoch(args, split, model, optim, loader, criterion):
                 loss_mmo = args.gamma * mmo_criterion(mod1, mod2)
             else:
                 loss_mmo = 0
-            
+
             # print(batch)
             model.to(device)
             pred = model(mod1, mod2, mod3, batch)
-            
+
             if args.batch_size==1:
                 if args.task == "multitask":
                     pred_grade, pred_hazard = pred
@@ -202,10 +209,10 @@ def one_epoch(args, split, model, optim, loader, criterion):
                 else:
                     raise NotImplementedError(
                         f'task method {args.task} is not implemented')
-            
+
             loss_task = criterion(args.task, pred_grade,pred_hazard, grade, time, event)
             loss = loss_task + args.gamma*loss_mmo
-            
+
             if split == 'train':
                 optim.zero_grad()
                 loss.backward()
@@ -219,7 +226,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
             all_time.append(time)
             all_event.append(event)
             all_ID.append(ID)
-            
+
 
         all_grade = torch.concat(all_grade)
         all_time = torch.concat(all_time)
@@ -228,7 +235,7 @@ def one_epoch(args, split, model, optim, loader, criterion):
         # print(all_time)
         # print(all_event)
         # print(all_preds_hazard)
-    
+
     if args.task == "grade" :
         all_preds_grade = torch.concat(all_preds_grade)
         return sum_loss / total, (all_preds_grade, None, all_grade, all_time, all_event, all_ID)
@@ -236,10 +243,10 @@ def one_epoch(args, split, model, optim, loader, criterion):
         all_preds_grade = torch.concat(all_preds_grade)
         all_preds_hazard = torch.concat(all_preds_hazard)
         return sum_loss / total, (all_preds_grade, all_preds_hazard, all_grade, all_time, all_event, all_ID)
-    else: 
+    else:
         all_preds_hazard = torch.concat(all_preds_hazard)
         return sum_loss / total, (None, all_preds_hazard, all_grade, all_time, all_event, all_ID)
-    
+
 
 def train_model(args, data, model, criterion, optim, scheduler, train_index, test_index, device):
 
@@ -266,11 +273,11 @@ def train_model(args, data, model, criterion, optim, scheduler, train_index, tes
         train_loader = DataLoader(
         train_set, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate)
         val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=True, collate_fn=custom_collate)
-    
+
 
     metric_logger = {'train': {'loss': [], 'cindex': [], 'grad_auc': []},
                      'val': {'loss': [], 'cindex': [], 'grad_auc': []}}
-    
+
     torch.cuda.manual_seed_all(2023)
     torch.manual_seed(2023)
     np.random.seed(2023)
@@ -281,13 +288,13 @@ def train_model(args, data, model, criterion, optim, scheduler, train_index, tes
         # Get the current learning rate
         current_lr = optim.param_groups[0]['lr']
         print(f"Epoch {epoch}, Learning rate: {current_lr}")
-        
+
         loss, preds = one_epoch(args,
                                 "train", model, optim, train_loader, criterion)
         scheduler.step()
         vloss, vpreds = one_epoch(args,
                                     "val", model, None, val_loader, criterion)
-        
+
         # writer.add_scalars('raptomic_30epoch', {'Train':loss,
         #                         'Validation':vloss}, epoch)
 
@@ -312,7 +319,7 @@ def train_model(args, data, model, criterion, optim, scheduler, train_index, tes
             print(f"Val C-index (survival) = {ci_val}")
             print(f"Val AUC (grade) = {auc_val}")
 
-            
+
             if (epoch > 10) and (vloss < best_loss):
                 best_loss = vloss
 
@@ -425,7 +432,7 @@ def test(args, device):
     np.random.seed(2023)
     checkpoint = torch.load(os.path.join(args.checkpoints_dir, args.exp_name, model_name, f'{model_name}_best_loss.pt'))
     # print(checkpoint)
-    
+
     # Create an instance of the model
     if args.feature_type == 'radiology':
         model = RModel(args)
@@ -466,7 +473,7 @@ def test(args, device):
 
     test_loss, test_preds = one_epoch(
             args, "test", model, None, test_loader, criterion)
-    
+
     ci_train, auc_train = compute_metrics(args, train_preds)
     ci_val, auc_val = compute_metrics(args, val_preds)
     ci_test, auc_test = compute_metrics(args, test_preds)
@@ -482,7 +489,7 @@ def test(args, device):
     pickle.dump(train_preds, open(os.path.join(args.checkpoints_dir, args.exp_name,model_name, f'{model_name}_pred_train.pkl'), 'wb'))
     pickle.dump(val_preds, open(os.path.join(args.checkpoints_dir, args.exp_name,model_name, f'{model_name}_pred_val.pkl'), 'wb'))
     pickle.dump(test_preds, open(os.path.join(args.checkpoints_dir, args.exp_name, model_name, f'{model_name}_pred_test.pkl'), 'wb'))
-    
+
 
 
 def train_val(args, device):
@@ -506,10 +513,10 @@ def train_val(args, device):
         model = PModel(args)
     else:
         model = Model(args)
-    
+
     device = 'cuda:0'
     model.to(device)
-    
+
     optim = define_optimizer(args, model)
     scheduler = define_scheduler(args, optim)
     # print(model)
@@ -520,7 +527,7 @@ def train_val(args, device):
 
     _, _, _, _, train_index, test_index = train_test_split(
         data, labels, indices, test_size=0.3, random_state=2023, shuffle=False, stratify=None)
-    
+
     model, optim, metric_logger = train_model(
         args, data, model, criterion, optim, scheduler, train_index, test_index, device)
 
@@ -530,7 +537,7 @@ def train_val(args, device):
 def save_results_to_mat(split, args, model_name):
     file_path = os.path.join(args.checkpoints_dir, args.exp_name, model_name, f'{model_name}_pred_{split}.pkl')
     data = pickle.load(open(file_path, "rb"))
-    
+
     flattened_list = [item for sublist in data[5] for item in sublist]
     IDs = np.asarray(flattened_list)
 
@@ -555,12 +562,12 @@ if __name__ == '__main__':
     metric_logger = train_val(args, device)
     test(args, device)
 
-    
+
     # Save results for train, validation, and test sets
     save_results_to_mat("train", args, model_name)
     save_results_to_mat("val", args, model_name)
     save_results_to_mat("test", args, model_name)
-    
+
 
 
 
@@ -603,20 +610,3 @@ if __name__ == '__main__':
     # Show the plots
     plt.tight_layout()
     plt.show()
-
-    
-
-
-
-    
-
-
-
-
-    
-
-
-
-
-
-    

@@ -1,14 +1,15 @@
-import torch
-from torch import nn
 import math
-from typing import Union, Sequence, Tuple
-from utils import define_act_layer
-from swintransformer import SwinTransformer, look_up_option
-from einops import rearrange
+import os
+from typing import Sequence, Tuple, Union
 
-import os 
-from medpy.io import load, header
 import numpy as np
+import torch
+from einops import rearrange
+from medpy.io import header, load
+from torch import nn
+
+from .swintransformer import SwinTransformer, look_up_option
+from .utils import define_act_layer
 
 
 class MultiTaskModel(nn.Module):
@@ -29,11 +30,11 @@ class MultiTaskModel(nn.Module):
             hidden_layer_list.append(hidden_block)
             incoming_features = hidden_unit
         self.hidden_layer = nn.Sequential(*hidden_layer_list)
-       
+
         out_features = 2 if self.task=="multitask" else 1
         self.classifier = nn.Linear(hidden_units[-1], out_features)
         self.output_act = nn.Sigmoid()
-        
+
 
     def forward(self, x):
         x = self.hidden_layer(x)
@@ -42,7 +43,7 @@ class MultiTaskModel(nn.Module):
         # print(classifier)
         if self.task =="multitask":
             grade, hazard = self.output_act(classifier)[:, 0], self.output_act(classifier)[:, 1]
-            
+
             return grade, hazard
         else:
             # print(self.output_act(classifier))
@@ -127,7 +128,7 @@ class FusionModelBi(nn.Module):
             raise NotImplementedError(
                 f'Fusion method {self.fusion_type} is not implemented')
         return self.taskmodel(x)
-    
+
 class SelfAttention(nn.Module):
     def __init__(self, dim_in, dim_out):
         super(SelfAttention, self).__init__()
@@ -140,50 +141,50 @@ class SelfAttention(nn.Module):
 
     def forward(self, mod1, mod2, mod3):
         x = torch.stack((mod1, mod2 ,mod3), dim=1)
-        Q = self.WQ(x) 
-        K = self.WK(x) 
-        V = self.WV(x) 
+        Q = self.WQ(x)
+        K = self.WK(x)
+        V = self.WV(x)
 
-        QK = torch.bmm(Q, K.transpose(1, 2)) 
+        QK = torch.bmm(Q, K.transpose(1, 2))
         attention_matrix = self.softmax(QK/self.root)
         out = torch.bmm(attention_matrix, V)
         return out
 
-    
+
 class FusionModel(nn.Module):
     def __init__(self, args, dim_in, dim_out):
         super(FusionModel, self).__init__()
         self.fusion_type = args.fusion_type
         act_layer = define_act_layer(args.act_type)
-    
+
         if self.fusion_type == "attention":
             self.attention_module = SelfAttention(dim_in, dim_out)
             self.taskmodel = MultiTaskModel(
                 args.task, dim_out*3, args.hidden_units, act_layer, args.dropout)
-            
+
         elif self.fusion_type == "fused_attention":
             self.attention_module = SelfAttention(dim_in, dim_out)
             self.taskmodel = MultiTaskModel(
                 args.task, (dim_out+1)**3, args.hidden_units, act_layer, args.dropout)
-            
+
         elif self.fusion_type == "kronecker":
             self.taskmodel = MultiTaskModel(
                 args.task, (dim_in+1)**3, args.hidden_units, act_layer, args.dropout)
-            
+
         elif self.fusion_type == "concatenation":
             self.taskmodel = MultiTaskModel(
                 args.task, dim_in*3, args.hidden_units, act_layer, args.dropout)
-            
+
         else:
             raise NotImplementedError(
                 f'Fusion method {self.fusion_type} is not implemented')
-        
+
     def forward(self, vec1, vec2, vec3):
-        
+
         if self.fusion_type == "attention":
             x = self.attention_module(vec1, vec2, vec3)
             x = x.view(x.shape[0], x.shape[1]*x.shape[2])
-            
+
         elif self.fusion_type == "kronecker":
             vec1 = torch.cat(
                 (vec1, torch.ones((vec1.shape[0], 1)).to(vec1.device)), 1)
@@ -195,7 +196,7 @@ class FusionModel(nn.Module):
             start_dim=1)
             x = torch.bmm(x12.unsqueeze(2), vec3.unsqueeze(1)).flatten(
                 start_dim=1)
-            
+
         elif self.fusion_type == "fused_attention":
             vec1, vec2, vec3 = self.attention_module(
                 vec1, vec2, vec3)[:, 0, :], self.attention_module(vec1, vec2, vec3)[:, 1, :] , self.attention_module(vec1, vec2, vec3)[:, 2, :]
@@ -210,11 +211,11 @@ class FusionModel(nn.Module):
             x = torch.bmm(x12.unsqueeze(2), vec3.unsqueeze(1)).flatten(
                 start_dim=1)
             # print(x.shape)
-            
+
         elif self.fusion_type == "concatenation":
             x = torch.cat((vec1, vec2, vec3), dim=1)
 
-        else: 
+        else:
             raise NotImplementedError(
                 f'Fusion method {self.fusion_type} is not implemented')
         return self.taskmodel(x)
@@ -290,7 +291,7 @@ class SwinTransformerRadiologyModel(nn.Module):
         self.norm = nn.LayerNorm(feature_size*4)
         self.avgpool = nn.AdaptiveAvgPool3d([1, 1, 1])
         self.dim_reduction = nn.Conv3d(feature_size*4, out_channels, 1)
-        
+
     def forward(self, x_in):
         hidden_states_out = self.swinViT(x_in, self.normalize)
         hidden_output = rearrange(
@@ -301,9 +302,9 @@ class SwinTransformerRadiologyModel(nn.Module):
         output = self.avgpool(nomalized_hidden_states_out)
         output = torch.flatten(self.dim_reduction(output), 1)
 
-        
+
         return output
-    
+
 
 class SwinTransformerPathologyModel(nn.Module):
 
@@ -374,7 +375,7 @@ class SwinTransformerPathologyModel(nn.Module):
         self.feature_size = feature_size
         self.norm = nn.LayerNorm(self.feature_size*(2**(len(num_heads))))
         self.avgpool = nn.AdaptiveAvgPool3d([1, 1, 1])
-        
+
         self.dim_reduction = nn.Conv3d(self.feature_size*4, out_channels, 1)
 
     def forward(self, x_in, batch_size):
@@ -394,7 +395,7 @@ class SwinTransformerPathologyModel(nn.Module):
         # print(
         #      f"shape after flatten: {output.shape}")
         return output
-    
+
 
 class Model(nn.Module):
     def __init__(self, args):
@@ -448,8 +449,8 @@ class Model(nn.Module):
             spatial_dims=2
             )
         self.fusion = FusionModel(args, args.feature_size, args.dim_out)
-    
-        
+
+
     def forward(self, ct_tumor, ct_lymph, path, batch_size):
         features_tumor = self.extractor_ct_tumor(ct_tumor)
         # print("features_tumor", features_tumor.shape)
@@ -457,12 +458,12 @@ class Model(nn.Module):
         # print("features_lymph", features_lymph.shape)
         features_pathology = self.extractor_pathology(path, batch_size)
         # print("features_pathology", features_pathology.shape)
-        
+
         output = self.fusion(
             features_tumor, features_lymph, features_pathology)
         #print("output shape", output.shape)
         return output
-        
+
 
 
 
@@ -503,11 +504,11 @@ class RModel(nn.Module):
             spatial_dims=3
         )
         self.fusion = FusionModelBi(args, args.feature_size, args.dim_out)
-        
+
     def forward(self, ct_tumor, ct_lymph):
         features_tumor = self.extractor_ct_tumor(ct_tumor)
         features_lymph = self.extractor_ct_tumor(ct_lymph)
-        
+
         output = self.fusion(
             features_tumor, features_lymph)
         ##print("output shape", output.shape)
@@ -536,18 +537,15 @@ class PModel(nn.Module):
             use_checkpoint = False,
             spatial_dims=2
             )
-        
+
         self.fusion = FusionModelBi(args, args.feature_size, args.dim_out)
         # self.fusion = MultiTaskModel(
         #         args.task, args.dim_out, args.hidden_units, act_layer=nn.ReLU(), dropout=0)
-    
-        
+
+
     def forward(self, path, batch_size):
-        
+
         features_pathology = self.extractor_pathology(path, batch_size)
         output = self.fusion(features_pathology, features_pathology)
         # print("output shape", output.shape)
         return output
-    
-
-

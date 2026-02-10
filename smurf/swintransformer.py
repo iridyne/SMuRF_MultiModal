@@ -1,18 +1,30 @@
-from torch.nn import LayerNorm
-from einops import rearrange
-import itertools
-from typing import Any, Type, Collection, Hashable, Iterable, Sequence, Mapping, Tuple, Union, Optional, cast
-import os
-import math
 import enum
+import itertools
+import math
+import os
+from typing import (
+    Any,
+    Collection,
+    Hashable,
+    Iterable,
+    Mapping,
+    Optional,
+    Sequence,
+    Tuple,
+    Type,
+    Union,
+    cast,
+)
+
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from utils import define_act_layer
 import torch.utils.checkpoint as checkpoint
+from einops import rearrange
+from torch.nn import LayerNorm
 
-
+from .utils import define_act_layer
 
 __all__ = [
     "Swin_transformer_classifier",
@@ -25,8 +37,8 @@ __all__ = [
     "MERGING_MODE",
     "BasicLayer",
     "SwinTransformer",
-]  
-    
+]
+
 class MLPBlock(nn.Module):
     """
     A multi-layer perceptron block, based on: "Dosovitskiy et al.,
@@ -1132,7 +1144,7 @@ class SwinTransformer(nn.Module):
         return x
 
     def forward(self, x, normalize=True):
-        
+
         # print(f"original shape: {x.shape}")
         x0 = self.patch_embed(x)
         # print(f"affter embedding shape: {x0.shape}")
@@ -1148,7 +1160,7 @@ class SwinTransformer(nn.Module):
             layers = [self.layers1, self.layers2, self.layers3]
         elif self.num_layers==4:
             layers = [self.layers1, self.layers2, self.layers3, self.layers4]
-        for i in range(self.num_layers):            
+        for i in range(self.num_layers):
             x1 = layers[i][0](x.contiguous())
             # print(f"after layers 1 shape: {x1.shape}")
             x1_out = self.proj_out(x1, normalize)

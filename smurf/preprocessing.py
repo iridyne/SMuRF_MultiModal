@@ -1,23 +1,24 @@
 import os
 import sys
+
 sys.path.append(os.path.join(os.getcwd(), '..\\HIPT\\HIPT_4K'))
-import matplotlib
-from PIL import Image
-from hipt_heatmap_utils import *
-from hipt_model_utils import get_vit256, get_vit4k, eval_transforms
-from hipt_4k import HIPT_4K
 import glob
-from medpy.io import load, header
+import math
+import pickle
+
+import h5py
+import matplotlib
+import nrrd
 import numpy as np
 import pandas as pd
-import h5py
-import pickle
-import math
-from parameters import mkdirs
 import torch
-import nrrd
+from hipt_4k import HIPT_4K
+from hipt_heatmap_utils import *
+from hipt_model_utils import eval_transforms, get_vit4k, get_vit256
+from medpy.io import header, load
+from PIL import Image
 
-
+from .parameters import mkdirs, parse_args
 
 OPENSLIDE_PATH = r'C:\Users\bsong47\openslide-win64-20221217\bin'
 
@@ -45,10 +46,10 @@ def build_ct_boxes(path):
         for patient in df["radiology_folder_name"]:
             if os.path.isfile(os.path.join(
                     labels_path, patient, label_name)):
-                
+
                 label, _ = load(os.path.join(
                         labels_path, patient, label_name))
-                
+
                 x_min, x_max = np.min(np.nonzero(label)[1]), np.max(
                     np.nonzero(label)[1])
                 y_min, y_max = np.min(np.nonzero(label)[0]), np.max(
@@ -154,7 +155,7 @@ def patch_embedding(dir_data, dir_hipt_pth, device):
                     pretrained_weights4k, device256, device4k)
     model.eval()
 
-    root_histo = r'C:\Users\bsong47\OneDrive - Emory University\Documents\code\raptomics\data\pathology\slides\ndpi' 
+    root_histo = r'C:\Users\bsong47\OneDrive - Emory University\Documents\code\raptomics\data\pathology\slides\ndpi'
 
     root_h5 = os.path.join(dir_data, 'patches')
     root_pkl = os.path.join(dir_data, 'embeddings')
@@ -171,7 +172,7 @@ def patch_embedding(dir_data, dir_hipt_pth, device):
 
             format = slide.split('.')[-1]
             image = openslide.OpenSlide(os.path.join(root_histo, slide))
-            
+
             if format == 'tiff' or format == 'tif':
                 if os.path.isfile(os.path.join(root_mask, slide.split('.')[0] + "_mask.png")):
                     mask = np.array(Image.open(os.path.join(root_mask, slide.split('.')[0] + "_mask.png")))
