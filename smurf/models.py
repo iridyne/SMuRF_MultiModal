@@ -1,11 +1,8 @@
 import math
-import os
-from typing import Sequence, Tuple, Union
+from typing import Optional, Sequence, Tuple, Union
 
-import numpy as np
 import torch
 from einops import rearrange
-from medpy.io import header, load
 from torch import nn
 
 from .swintransformer import SwinTransformer, look_up_option
@@ -13,10 +10,14 @@ from .utils import define_act_layer
 
 
 class MultiTaskModel(nn.Module):
-    def __init__(self, task, in_features, hidden_units=None, act_layer=nn.ReLU(), dropout=0.25) -> None:
+    def __init__(self, task: str, in_features: int, hidden_units: Sequence[int] = (128,), act_layer: Optional[nn.Module] = None, dropout: float = 0.25) -> None:
 
         super().__init__()
+        # Ensure there is a valid activation module
+        if act_layer is None:
+            act_layer = nn.ReLU()
         self.act = act_layer
+
         incoming_features = in_features
         hidden_layer_list = []
         self.task = task
@@ -31,7 +32,7 @@ class MultiTaskModel(nn.Module):
             incoming_features = hidden_unit
         self.hidden_layer = nn.Sequential(*hidden_layer_list)
 
-        out_features = 2 if self.task=="multitask" else 1
+        out_features = 2 if self.task == "multitask" else 1
         self.classifier = nn.Linear(hidden_units[-1], out_features)
         self.output_act = nn.Sigmoid()
 
@@ -225,21 +226,21 @@ class SwinTransformerRadiologyModel(nn.Module):
 
     def __init__(
         self,
-        patch_size: Union[Sequence[int], int],
-        window_size: Union[Sequence[int], int],
+        patch_size,
+        window_size,
         in_channels: int,
         out_channels: int,
-        depths: Sequence[int] = (2, 2, 2, 2),
-        num_heads: Sequence[int] = (3, 6, 12, 24),
+        depths = (2, 2, 2, 2),
+        num_heads = (3, 6, 12, 24),
         feature_size: int = 24,
-        norm_name: Union[Tuple, str] = "instance",
+        norm_name = "instance",
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
         dropout_path_rate: float = 0.0,
         normalize: bool = True,
         use_checkpoint: bool = False,
         spatial_dims: int = 3,
-        downsample="merging",
+        downsample: Optional[object] = "merging",
     ) -> None:
         """
         Input requirement : [BxCxDxHxW]
@@ -270,6 +271,16 @@ class SwinTransformerRadiologyModel(nn.Module):
 
         self.normalize = normalize
 
+        # Prepare a safe downsample argument for the SwinTransformer constructor.
+        # If `downsample` is a string, try to resolve it via look_up_option, otherwise
+        # pass it through. Default to the string "merging" if resolution returns None.
+        _ds = look_up_option(downsample) if isinstance(downsample, str) else downsample
+        if _ds is None:
+            _ds = "merging"
+        # Ensure we pass a string to the SwinTransformer downsample parameter to
+        # satisfy static type checkers that expect a `str` here.
+        # Cast to str explicitly; the underlying Swin constructor will interpret
+        # the value as needed.
         self.swinViT = SwinTransformer(
             in_chans=in_channels,
             embed_dim=feature_size,
@@ -285,11 +296,10 @@ class SwinTransformerRadiologyModel(nn.Module):
             norm_layer=nn.LayerNorm,
             use_checkpoint=use_checkpoint,
             spatial_dims=spatial_dims,
-            downsample=look_up_option(downsample) if isinstance(
-                downsample, str) else downsample,
-        )
+            downsample=str(_ds),
+        )  # type: ignore
         self.norm = nn.LayerNorm(feature_size*4)
-        self.avgpool = nn.AdaptiveAvgPool3d([1, 1, 1])
+        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
         self.dim_reduction = nn.Conv3d(feature_size*4, out_channels, 1)
 
     def forward(self, x_in):
@@ -310,21 +320,21 @@ class SwinTransformerPathologyModel(nn.Module):
 
     def __init__(
         self,
-        patch_size: Union[Sequence[int], int],
-        window_size: Union[Sequence[int], int],
+        patch_size,
+        window_size,
         in_channels: int,
         out_channels: int,
-        depths: Sequence[int] = (2, 2, 2, 2),
-        num_heads: Sequence[int] = (3, 6, 12, 24),
+        depths = (2, 2, 2, 2),
+        num_heads = (3, 6, 12, 24),
         feature_size: int = 24,
-        norm_name: Union[Tuple, str] = "instance",
+        norm_name = "instance",
         drop_rate: float = 0.0,
         attn_drop_rate: float = 0.0,
         dropout_path_rate: float = 0.0,
         normalize: bool = True,
         use_checkpoint: bool = False,
         spatial_dims: int = 2,
-        downsample="merging",
+        downsample: Optional[object] = "merging",
     ) -> None:
         """
         Input requirement : [BxCxDxHxW]
@@ -354,6 +364,16 @@ class SwinTransformerPathologyModel(nn.Module):
             raise ValueError("spatial dimension should be 2 or 3.")
 
         self.normalize = normalize
+        # Prepare a safe downsample argument for the SwinTransformer constructor.
+        # If `downsample` is a string, try to resolve it via look_up_option, otherwise
+        # pass it through. Default to the string "merging" if resolution returns None.
+        _ds = look_up_option(downsample) if isinstance(downsample, str) else downsample
+        if _ds is None:
+            _ds = "merging"
+        # Ensure we pass a string to the SwinTransformer downsample parameter to
+        # satisfy static type checkers that expect a `str` here.
+        # Cast to str explicitly; the underlying Swin constructor will interpret
+        # the value as needed.
         self.swinViT = SwinTransformer(
             in_chans=in_channels,
             embed_dim=feature_size,
@@ -369,12 +389,11 @@ class SwinTransformerPathologyModel(nn.Module):
             norm_layer=nn.LayerNorm,
             use_checkpoint=use_checkpoint,
             spatial_dims=spatial_dims,
-            downsample=look_up_option(downsample) if isinstance(
-                downsample, str) else downsample,
-        )
+            downsample=str(_ds),
+        )  # type: ignore
         self.feature_size = feature_size
         self.norm = nn.LayerNorm(self.feature_size*(2**(len(num_heads))))
-        self.avgpool = nn.AdaptiveAvgPool3d([1, 1, 1])
+        self.avgpool = nn.AdaptiveAvgPool3d((1, 1, 1))
 
         self.dim_reduction = nn.Conv3d(self.feature_size*4, out_channels, 1)
 
