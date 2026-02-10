@@ -33,7 +33,8 @@ For full details, see [docs/README.md](docs/README.md).
 - `models.py`: Model definitions
 - `docs/`: Detailed documentation
   - [README.md](docs/README.md): Comprehensive guide
-  - [@AGENTS.md](docs/@AGENTS.md): Component analysis
+  - [AGENTS.md](docs/AGENTS.md): Component analysis
+  - [feature_extractor.md](docs/feature_extractor.md): Feature extractor implementation notes
 
 ## Citation
 

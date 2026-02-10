@@ -52,3 +52,6 @@ SMuRF (Swin Transformer-based MultiModal and Multi-Region Data Fusion Framework)
 - Transformer-based: Leverages Swin Transformer for spatial hierarchies.
 
 This analysis highlights the modular "agents" enabling robust multimodal prediction in OPSCC.
+
+## Related documentation
+- [Feature extractor guide](docs/feature_extractor.md): Implementation notes and usage examples for the Swin-based radiology (`SwinTransformerRadiologyModel`) and pathology (`SwinTransformerPathologyModel`) feature extractors — includes input/output shapes, forward-flow explanation, and a recommended `FeatureExtractor` wrapper for reuse.
