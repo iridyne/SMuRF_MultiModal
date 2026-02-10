@@ -1,5 +1,5 @@
 import math
-from typing import Optional, Sequence, Tuple, Union
+from typing import Optional, Sequence
 
 import torch
 from einops import rearrange

@@ -1,7 +1,6 @@
 import enum
 import itertools
 import math
-import os
 from typing import (
     Any,
     Collection,
@@ -27,7 +26,6 @@ from torch.nn import LayerNorm
 from .utils import define_act_layer
 
 __all__ = [
-    "Swin_transformer_classifier",
     "window_partition",
     "window_reverse",
     "WindowAttention",
